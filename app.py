@@ -1,3 +1,5 @@
+
+
 import streamlit as st
 import requests
 import pandas as pd
@@ -15,6 +17,19 @@ st.set_page_config(
 )
 
 st.title("📊 Reddit Social Listening Tool")
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "excel_data" not in st.session_state:
+    st.session_state.excel_data = None
+
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+if "keyword" not in st.session_state:
+    st.session_state.keyword = None
 
 # =========================================================
 # USER INPUT
@@ -97,22 +112,19 @@ def calculate_relevance(title, post_text, subreddit, keyword):
 
             match_count += 1
 
-            # title weight
             if word in title:
                 score += 5
 
-            # post body weight
             if word in post_text:
                 score += 3
 
-            # subreddit weight
             if word in subreddit:
                 score += 2
 
     return score, match_count
 
 # =========================================================
-# BUTTON
+# FETCH BUTTON
 # =========================================================
 
 if st.button("Fetch Reddit Data"):
@@ -138,7 +150,7 @@ if st.button("Fetch Reddit Data"):
     )
 
     # =========================================================
-    # FETCH POSTS
+    # FETCH DATA
     # =========================================================
 
     with st.spinner("Fetching Reddit Posts and Comments..."):
@@ -188,7 +200,7 @@ if st.button("Fetch Reddit Data"):
                 post_url = "https://reddit.com" + p.get("permalink")
 
                 # =========================================================
-                # RELEVANCE CHECK
+                # RELEVANCE
                 # =========================================================
 
                 relevance_score, match_count = calculate_relevance(
@@ -198,9 +210,7 @@ if st.button("Fetch Reddit Data"):
                     keyword
                 )
 
-                # Skip irrelevant posts
                 if relevance_score < min_relevance:
-
                     continue
 
                 # =========================================================
@@ -294,10 +304,6 @@ if st.button("Fetch Reddit Data"):
 
                 progress_bar.progress((idx + 1) / len(posts))
 
-                # =========================================================
-                # RATE LIMIT PROTECTION
-                # =========================================================
-
                 time.sleep(2)
 
             except Exception as e:
@@ -305,7 +311,7 @@ if st.button("Fetch Reddit Data"):
                 st.error(f"Error processing post: {e}")
 
         # =========================================================
-        # DATAFRAME
+        # CREATE DATAFRAME
         # =========================================================
 
         df = pd.DataFrame(all_data)
@@ -320,35 +326,15 @@ if st.button("Fetch Reddit Data"):
             st.stop()
 
         # =========================================================
-        # ANALYTICS
+        # STORE SESSION STATE
         # =========================================================
 
-        st.header("📈 Analytics")
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        col1.metric("Total Rows", len(df))
-
-        col2.metric(
-            "Positive Comments",
-            len(df[df["sentiment"] == "Positive"])
-        )
-
-        col3.metric(
-            "Negative Comments",
-            len(df[df["sentiment"] == "Negative"])
-        )
-
-        col4.metric(
-            "Neutral Comments",
-            len(df[df["sentiment"] == "Neutral"])
-        )
+        st.session_state.df = df
+        st.session_state.keyword = keyword
 
         # =========================================================
         # TOP POSTS
         # =========================================================
-
-        st.header("🔥 Top Relevant Posts")
 
         top_posts = (
             df[
@@ -372,32 +358,9 @@ if st.button("Fetch Reddit Data"):
             .head(10)
         )
 
-        st.dataframe(top_posts, use_container_width=True)
-
         # =========================================================
-        # SENTIMENT SUMMARY
+        # POSITIVE COMMENTS
         # =========================================================
-
-        st.header("😊 Sentiment Distribution")
-
-        sentiment_summary = (
-            df["sentiment"]
-            .value_counts()
-            .reset_index()
-        )
-
-        sentiment_summary.columns = [
-            "Sentiment",
-            "Count"
-        ]
-
-        st.dataframe(sentiment_summary)
-
-        # =========================================================
-        # TOP POSITIVE COMMENTS
-        # =========================================================
-
-        st.header("✅ Top 10 Positive Comments")
 
         positive_comments = (
             df[
@@ -410,25 +373,9 @@ if st.button("Fetch Reddit Data"):
             .head(10)
         )
 
-        st.dataframe(
-            positive_comments[
-                [
-                    "title",
-                    "comment",
-                    "comment_score",
-                    "comment_author",
-                    "relevance_score",
-                    "post_url"
-                ]
-            ],
-            use_container_width=True
-        )
-
         # =========================================================
-        # TOP NEGATIVE COMMENTS
+        # NEGATIVE COMMENTS
         # =========================================================
-
-        st.header("❌ Top 10 Negative Comments")
 
         negative_comments = (
             df[
@@ -441,27 +388,20 @@ if st.button("Fetch Reddit Data"):
             .head(10)
         )
 
-        st.dataframe(
-            negative_comments[
-                [
-                    "title",
-                    "comment",
-                    "comment_score",
-                    "comment_author",
-                    "relevance_score",
-                    "post_url"
-                ]
-            ],
-            use_container_width=True
+        # =========================================================
+        # SENTIMENT SUMMARY
+        # =========================================================
+
+        sentiment_summary = (
+            df["sentiment"]
+            .value_counts()
+            .reset_index()
         )
 
-        # =========================================================
-        # RAW DATA
-        # =========================================================
-
-        st.header("📋 Complete Extracted Data")
-
-        st.dataframe(df, use_container_width=True)
+        sentiment_summary.columns = [
+            "Sentiment",
+            "Count"
+        ]
 
         # =========================================================
         # EXCEL EXPORT
@@ -501,17 +441,171 @@ if st.button("Fetch Reddit Data"):
                 index=False
             )
 
-        excel_data = output.getvalue()
+        st.session_state.excel_data = output.getvalue()
 
-        # =========================================================
-        # DOWNLOAD BUTTON
-        # =========================================================
+# =========================================================
+# DISPLAY DATA
+# =========================================================
 
-        st.download_button(
-            label="📥 Download Excel Report",
-            data=excel_data,
-            file_name=f"reddit_social_listening_{keyword.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+if st.session_state.df is not None:
+
+    df = st.session_state.df
+
+    # =========================================================
+    # ANALYTICS
+    # =========================================================
+
+    st.header("📈 Analytics")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Total Rows", len(df))
+
+    col2.metric(
+        "Positive Comments",
+        len(df[df["sentiment"] == "Positive"])
+    )
+
+    col3.metric(
+        "Negative Comments",
+        len(df[df["sentiment"] == "Negative"])
+    )
+
+    col4.metric(
+        "Neutral Comments",
+        len(df[df["sentiment"] == "Neutral"])
+    )
+
+    # =========================================================
+    # TOP POSTS
+    # =========================================================
+
+    st.header("🔥 Top Relevant Posts")
+
+    top_posts = (
+        df[
+            [
+                "title",
+                "subreddit",
+                "relevance_score",
+                "post_upvotes",
+                "total_comments",
+                "post_url"
+            ]
+        ]
+        .drop_duplicates()
+        .sort_values(
+            by=[
+                "relevance_score",
+                "total_comments"
+            ],
+            ascending=False
         )
+        .head(10)
+    )
 
-        st.success("Excel Report Ready")
+    st.dataframe(top_posts, use_container_width=True)
+
+    # =========================================================
+    # SENTIMENT SUMMARY
+    # =========================================================
+
+    st.header("😊 Sentiment Distribution")
+
+    sentiment_summary = (
+        df["sentiment"]
+        .value_counts()
+        .reset_index()
+    )
+
+    sentiment_summary.columns = [
+        "Sentiment",
+        "Count"
+    ]
+
+    st.dataframe(sentiment_summary)
+
+    # =========================================================
+    # POSITIVE COMMENTS
+    # =========================================================
+
+    st.header("✅ Top 10 Positive Comments")
+
+    positive_comments = (
+        df[
+            df["sentiment"] == "Positive"
+        ]
+        .sort_values(
+            by="comment_score",
+            ascending=False
+        )
+        .head(10)
+    )
+
+    st.dataframe(
+        positive_comments[
+            [
+                "title",
+                "comment",
+                "comment_score",
+                "comment_author",
+                "relevance_score",
+                "post_url"
+            ]
+        ],
+        use_container_width=True
+    )
+
+    # =========================================================
+    # NEGATIVE COMMENTS
+    # =========================================================
+
+    st.header("❌ Top 10 Negative Comments")
+
+    negative_comments = (
+        df[
+            df["sentiment"] == "Negative"
+        ]
+        .sort_values(
+            by="comment_score",
+            ascending=False
+        )
+        .head(10)
+    )
+
+    st.dataframe(
+        negative_comments[
+            [
+                "title",
+                "comment",
+                "comment_score",
+                "comment_author",
+                "relevance_score",
+                "post_url"
+            ]
+        ],
+        use_container_width=True
+    )
+
+    # =========================================================
+    # RAW DATA
+    # =========================================================
+
+    st.header("📋 Complete Extracted Data")
+
+    st.dataframe(df, use_container_width=True)
+
+# =========================================================
+# DOWNLOAD BUTTON
+# =========================================================
+
+if st.session_state.excel_data is not None:
+
+    st.download_button(
+        label="📥 Download Excel Report",
+        data=st.session_state.excel_data,
+        file_name=f"reddit_social_listening_{st.session_state.keyword.replace(' ', '_')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+
+    st.success("Excel Report Ready")
